@@ -53,20 +53,31 @@ $('start').onclick = async () => {
   stream.getVideoTracks()[0].onended = stop;
   msg(stream.getAudioTracks().length ? '' : 'Ojo: no se comparte audio. Detené y volvé a empezar marcando "Compartir audio de la pestaña".');
 
-  peer = new Peer('wftda-live-' + code);
-  peer.on('error', (e) => { msg(e.type === 'unavailable-id' ? 'Ese código ya está en uso. Probá otro.' : 'Error de conexión: ' + e.type); stop(); });
-  peer.on('open', () => {
-    $('badge').textContent = 'EN VIVO'; $('badge').classList.add('live');
-    $('start').disabled = true; $('stop').disabled = false;
-    $('link').value = location.origin + location.pathname.replace('broadcast.html', 'watch.html') + '#' + code;
-    $('linkbox').hidden = false;
-  });
-  peer.on('connection', (conn) => {
-    conn.on('open', () => {
-      const call = peer.call(conn.peer, stream);
-      calls.set(conn.peer, call); $('n').textContent = calls.size;
+  const open = () => {
+    if (!stream) return;
+    peer = new Peer('wftda-live-' + code);
+    peer.on('error', (e) => {
+      if (e.type === 'unavailable-id') { msg('Ese código ya está en uso (¿otra pestaña transmitiendo?). Cerrala o probá otro código.'); return stop(); }
+      msg('Problema de conexión (' + e.type + '). Reintentando…');
+      $('badge').textContent = 'Reconectando…'; $('badge').classList.remove('live');
+      peer.destroy(); setTimeout(open, 3000);
     });
-    conn.on('close', () => { calls.get(conn.peer)?.close(); calls.delete(conn.peer); $('n').textContent = calls.size; });
-  });
+    peer.on('disconnected', () => peer.reconnect());
+    peer.on('open', () => {
+      msg('');
+      $('badge').textContent = 'EN VIVO'; $('badge').classList.add('live');
+      $('start').disabled = true; $('stop').disabled = false;
+      $('link').value = location.origin + location.pathname.replace('broadcast.html', '');
+      $('linkbox').hidden = false;
+    });
+    peer.on('connection', (conn) => {
+      conn.on('open', () => {
+        const call = peer.call(conn.peer, stream);
+        calls.set(conn.peer, call); $('n').textContent = calls.size;
+      });
+      conn.on('close', () => { calls.get(conn.peer)?.close(); calls.delete(conn.peer); $('n').textContent = calls.size; });
+    });
+  };
+  open();
 };
 </script></body></html>
