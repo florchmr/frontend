@@ -11,18 +11,26 @@
   <div class="row"><input id="code" placeholder="Código"><button id="go">Entrar</button></div>
 </div>
 <div class="card">
-  <video id="v" autoplay playsinline controls muted></video>
+  <div class="player">
+    <video id="v" autoplay playsinline controls muted></video>
+    <button id="cast" class="castbtn" hidden title="Transmitir a TV (Chromecast)" aria-label="Transmitir a TV">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M21 3H3a2 2 0 0 0-2 2v3h2V5h18v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM1 18v3h3a3 3 0 0 0-3-3zm0-4v2a5 5 0 0 1 5 5h2a7 7 0 0 0-7-7zm0-4v2a9 9 0 0 1 9 9h2A11 11 0 0 0 1 10z"/></svg>
+    </button>
+  </div>
 </div>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
 const setBadge = (t, live) => { $('badge').textContent = t; $('badge').classList.toggle('live', !!live); };
+const isTV = new URLSearchParams(location.search).has('tv');   // modo pantalla de TV (Chromecast)
+if (isTV) { document.body.classList.add('tv'); $('v').controls = false; $('v').muted = false; }
+let casting = false;
 let sig, pc, code, pending = 0, tries = 0, vid = rid();
 const vEl = $('v'); let unmutedAt = 0, lastT = -1, stuck = 0;
 
 // Al sacar el silencio, algunos celulares pausan el video: lo reanudamos.
 vEl.addEventListener('volumechange', () => {
-  if (vEl.muted) return;
+  if (vEl.muted || !vEl.srcObject) return;
   unmutedAt = Date.now();
   setTimeout(() => vEl.paused && vEl.play().catch(() => { vEl.muted = true; }), 0);
 });
@@ -37,6 +45,7 @@ setInterval(() => {
 }, 2000);
 
 function hello() {
+  if (casting) return;
   if (Date.now() - pending < 12000) return;   // ya pedí hace poco
   pending = Date.now(); setBadge('Conectando…');
   sig.send({ t: 'hello', v: vid }).catch(() => setBadge('Sin conexión'));
@@ -46,7 +55,11 @@ function drop() { pc && pc.close(); pc = null; $('v').srcObject = null; }
 async function onOffer(m) {
   drop(); pending = 0;
   pc = new RTCPeerConnection(ICE); const me = pc;
-  pc.ontrack = (ev) => { $('v').srcObject = ev.streams[0]; };
+  pc.ontrack = (ev) => {
+    if (vEl.srcObject === ev.streams[0]) return;
+    vEl.srcObject = ev.streams[0];
+    vEl.play().catch(() => { vEl.muted = true; vEl.play().catch(() => {}); });  // si el navegador bloquea el sonido, arranca en mudo
+  };
   pc.onconnectionstatechange = () => {
     if (me !== pc) return;
     if (me.connectionState === 'connected') { tries = 0; setBadge('EN VIVO', true); }
@@ -75,4 +88,20 @@ function start(c) {
 }
 $('go').onclick = () => start($('code').value);
 start(location.hash.slice(1) || window.DEFAULT_CODE);
+
+// Botón de Chromecast: el Chromecast abre esta misma página en modo TV y se conecta solo.
+if (!isTV && 'PresentationRequest' in window) {
+  try {
+    const req = new PresentationRequest([new URL('watch.html?tv=1#' + code, location.href).href]);
+    const btn = $('cast');
+    req.getAvailability().then((av) => {
+      const upd = () => (btn.hidden = !av.value); upd(); av.onchange = upd;
+    }).catch(() => {});
+    const resume = () => { casting = false; btn.classList.remove('on'); pending = 0; hello(); };
+    btn.onclick = () => req.start().then((conn) => {
+      casting = true; btn.classList.add('on'); drop(); setBadge('Transmitiendo a la TV');
+      conn.onterminate = conn.onclose = resume;
+    }).catch(() => {});
+  } catch {}
+}
 </script></body></html>

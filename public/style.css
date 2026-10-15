@@ -19,3 +19,12 @@ ol{padding-left:20px;margin:8px 0}
 h1{text-align:center}
 @media (max-width:600px){.logo{max-width:100px}}
 .badge-row{text-align:center;margin:0 0 16px}
+.player{position:relative}
+.castbtn{position:absolute;top:10px;right:10px;width:42px;height:42px;padding:0;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;display:flex;align-items:center;justify-content:center}
+.castbtn.on{background:var(--acc)}
+.tv .logo{max-width:90px;margin-bottom:4px}
+.tv h1{display:none}
+.tv .card{background:transparent;padding:0}
+.tv video{max-height:none;height:84vh}
+.tv .sub{display:none}
+.castbtn[hidden],.tv .castbtn{display:none}
