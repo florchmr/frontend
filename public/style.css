@@ -17,3 +17,4 @@ button:disabled{opacity:.5;cursor:default}
 ol{padding-left:20px;margin:8px 0}
 .logo{display:block;margin:0 auto 12px;width:100%;max-width:200px;height:auto}
 h1{text-align:center}
+@media (max-width:600px){.logo{max-width:100px}}
