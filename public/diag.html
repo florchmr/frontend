@@ -1,0 +1,47 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Diagnóstico</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+<h1>Diagnóstico de conexión</h1>
+<p class="sub">Esperá unos segundos y mandame una captura o copiá el resultado.</p>
+<div class="card"><pre id="out" style="white-space:pre-wrap;margin:0;font-size:.95rem">Probando…</pre>
+<div class="row"><button id="copy" class="sec">Copiar resultado</button></div></div>
+</main>
+<script>
+const out = []; const show = () => (document.getElementById('out').textContent = out.join('\n'));
+const add = (t) => { out.push(t); show(); };
+const ok = (b) => (b ? '✅' : '❌');
+document.getElementById('copy').onclick = () => navigator.clipboard.writeText(out.join('\n'));
+
+async function http() {
+  try { const r = await fetch('https://0.peerjs.com/peerjs/id', { cache: 'no-store' }); add(`${ok(r.ok)} HTTPS a 0.peerjs.com: ${r.status}`); }
+  catch (e) { add(`❌ HTTPS a 0.peerjs.com: ${e.message}`); }
+}
+function ws() {
+  return new Promise((res) => {
+    let done = false; const t0 = Date.now();
+    const finish = (m, good) => { if (done) return; done = true; add(`${ok(good)} WebSocket a 0.peerjs.com: ${m}`); res(); };
+    try {
+      const w = new WebSocket('wss://0.peerjs.com/peerjs?key=peerjs&id=diag' + Math.random().toString(36).slice(2, 10) + '&token=diag1');
+      w.onmessage = (e) => { finish('conectó (' + (Date.now() - t0) + ' ms)', true); w.close(); };
+      w.onerror = () => finish('error de conexión', false);
+      w.onclose = (e) => finish('cerrado, código ' + e.code, false);
+      setTimeout(() => finish('sin respuesta en 8 s', false), 8000);
+    } catch (e) { finish(e.message, false); }
+  });
+}
+function stun() {
+  return new Promise((res) => {
+    const types = new Set(); const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    pc.createDataChannel('x');
+    pc.onicecandidate = (e) => { if (e.candidate) types.add(e.candidate.type); };
+    pc.createOffer().then((o) => pc.setLocalDescription(o));
+    setTimeout(() => { pc.close(); add(`${ok(types.has('srflx'))} STUN (Google): ${types.has('srflx') ? 'ok' : 'no responde (tu red bloquea WebRTC hacia Internet)'} [${[...types].join(', ') || 'sin candidatos'}]`); res(); }, 5000);
+  });
+}
+(async () => {
+  add('Navegador: ' + navigator.userAgent);
+  add('Pantalla compartida disponible: ' + (navigator.mediaDevices?.getDisplayMedia ? 'sí' : 'no'));
+  try { add('Código guardado: ' + (localStorage.getItem('code') || '(ninguno)')); } catch { add('Código guardado: (localStorage bloqueado)'); }
+  await http(); await ws(); await stun(); add('Fin.');
+})();
+</script></body></html>
