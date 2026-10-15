@@ -1,7 +1,7 @@
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>banzaipiratin · Transmitir</title><link rel="icon" href="logo.webp"><link rel="stylesheet" href="style.css">
 <script src="config.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script></head>
+<script src="signal.js"></script></head>
 <body><main>
 <img class="logo" src="logo.webp" alt="Banzai Roller Derby">
 <h1>Transmitir <span id="badge" class="badge">Sin transmitir</span></h1>
@@ -30,17 +30,36 @@ const $ = (id) => document.getElementById(id);
 const msg = (t) => ($('msg').textContent = t);
 const rand = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('');
 try { $('code').value = localStorage.getItem('code') || window.DEFAULT_CODE; } catch { $('code').value = window.DEFAULT_CODE; }
-let peer, stream, calls = new Map();
+let sig, stream, hb, bid = rid(); const pcs = new Map();
+setInterval(() => stream && count(), 2000);
+const count = () => ($('n').textContent = [...pcs.values()].filter((p) => p.connectionState === 'connected').length);
 
 function stop() {
-  calls.forEach((c) => c.close()); calls.clear();
-  stream && stream.getTracks().forEach((t) => t.stop()); stream = null;
-  peer && peer.destroy(); peer = null;
+  clearInterval(hb); hb = null;
+  sig && sig.send({ t: 'bye', b: bid }).catch(() => {}); setTimeout(() => sig && sig.close(), 500);
+  pcs.forEach((p) => p.close()); pcs.clear();
+  stream && stream.getTracks().forEach((t) => t.stop()); stream = sig = null;
   $('v').srcObject = null; $('badge').textContent = 'Sin transmitir'; $('badge').classList.remove('live');
   $('start').disabled = false; $('stop').disabled = true; $('n').textContent = 0;
 }
 $('stop').onclick = stop;
 $('copy').onclick = () => { navigator.clipboard.writeText($('link').value); $('copy').textContent = '¡Copiado!'; };
+
+async function onHello(v) {
+  if (!stream) return;
+  const old = pcs.get(v); if (old && old.connectionState === 'connected') return;
+  old && old.close();
+  const pc = new RTCPeerConnection(ICE); pcs.set(v, pc);
+  stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+  pc.getSenders().forEach((s) => { if (s.track?.kind === 'video') { const p = s.getParameters(); p.encodings = [{ maxBitrate: 3_000_000 }]; s.setParameters(p).catch(() => {}); } });
+  pc.onconnectionstatechange = () => {
+    if (['failed', 'closed'].includes(pc.connectionState) && pcs.get(v) === pc) pcs.delete(v);
+    count();
+  };
+  await pc.setLocalDescription(await pc.createOffer());
+  await gather(pc);
+  sig.send({ t: 'offer', v, b: bid, sdp: pc.localDescription.sdp }).catch(() => msg('No se pudo enviar la oferta al espectador. Reintentá.'));
+}
 
 $('start').onclick = async () => {
   const code = $('code').value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -53,31 +72,21 @@ $('start').onclick = async () => {
   stream.getVideoTracks()[0].onended = stop;
   msg(stream.getAudioTracks().length ? '' : 'Ojo: no se comparte audio. Detené y volvé a empezar marcando "Compartir audio de la pestaña".');
 
-  const open = () => {
-    if (!stream) return;
-    peer = new Peer('wftda-live-' + code);
-    peer.on('error', (e) => {
-      if (e.type === 'unavailable-id') { msg('Ese código ya está en uso (¿otra pestaña transmitiendo?). Cerrala o probá otro código.'); return stop(); }
-      msg('Problema de conexión (' + e.type + '). Reintentando…');
-      $('badge').textContent = 'Reconectando…'; $('badge').classList.remove('live');
-      peer.destroy(); setTimeout(open, 3000);
-    });
-    peer.on('disconnected', () => peer.reconnect());
-    peer.on('open', () => {
-      msg('');
-      $('badge').textContent = 'EN VIVO'; $('badge').classList.add('live');
-      $('start').disabled = true; $('stop').disabled = false;
-      $('link').value = location.origin + location.pathname.replace('broadcast.html', '');
-      $('linkbox').hidden = false;
-    });
-    peer.on('connection', (conn) => {
-      conn.on('open', () => {
-        const call = peer.call(conn.peer, stream);
-        calls.set(conn.peer, call); $('n').textContent = calls.size;
-      });
-      conn.on('close', () => { calls.get(conn.peer)?.close(); calls.delete(conn.peer); $('n').textContent = calls.size; });
-    });
-  };
-  open();
+  sig = new Signal(code, async (m) => {
+    if (m.t === 'hello') onHello(m.v);
+    else if (m.t === 'answer' && m.b === bid) { const pc = pcs.get(m.v); pc && pc.signalingState === 'have-local-offer' && pc.setRemoteDescription({ type: 'answer', sdp: m.sdp }).catch(() => {}); }
+  }, {
+    onstatus: (st) => {
+      if (st === 'error') { msg('Problema de conexión con el servicio de señalización. Reintentando…'); $('badge').textContent = 'Reconectando…'; $('badge').classList.remove('live'); }
+      else if (stream) {
+        $('badge').textContent = 'EN VIVO'; $('badge').classList.add('live');
+        $('start').disabled = true; $('stop').disabled = false;
+        $('link').value = location.origin + location.pathname.replace('broadcast.html', '');
+        $('linkbox').hidden = false;
+        const live = () => sig && sig.send({ t: 'live', b: bid }).catch(() => {});
+        if (!hb) { live(); hb = setInterval(live, 4 * 60 * 1000); }
+      }
+    },
+  });
 };
 </script></body></html>

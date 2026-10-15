@@ -1,7 +1,7 @@
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>banzaipiratin</title><link rel="icon" href="logo.webp"><link rel="stylesheet" href="style.css">
 <script src="config.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script></head>
+<script src="signal.js"></script></head>
 <body><main>
 <img class="logo" src="logo.webp" alt="Banzai Roller Derby">
 <h1>Champs 2026 <span id="badge" class="badge">Conectando…</span></h1>
@@ -16,30 +16,45 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const setBadge = (t, live) => { $('badge').textContent = t; $('badge').classList.toggle('live', !!live); };
-let peer, timer, code;
+let sig, pc, code, pending = 0, tries = 0, vid = rid();
 
-function connect() {
-  clearTimeout(timer);
-  peer && peer.destroy();
-  setBadge('Conectando…');
-  peer = new Peer();
-  const retry = () => { setBadge('Esperando transmisión'); timer = setTimeout(connect, 4000); };
-  peer.on('error', retry);
-  peer.on('disconnected', retry);
-  peer.on('call', (call) => {
-    call.answer();
-    call.on('stream', (s) => { $('v').srcObject = s; setBadge('EN VIVO', true); });
-    call.on('close', retry);
-  });
-  peer.on('open', () => {
-    const conn = peer.connect('wftda-live-' + code);
-    conn.on('close', retry);
-    conn.on('error', retry);
-    // Si el transmisor no está, no hay respuesta: reintentar
-    timer = setTimeout(() => { if (!$('v').srcObject) retry(); }, 8000);
+function hello() {
+  if (Date.now() - pending < 12000) return;   // ya pedí hace poco
+  pending = Date.now(); setBadge('Conectando…');
+  sig.send({ t: 'hello', v: vid }).catch(() => setBadge('Sin conexión'));
+}
+function drop() { pc && pc.close(); pc = null; $('v').srcObject = null; }
+
+async function onOffer(m) {
+  drop(); pending = 0;
+  pc = new RTCPeerConnection(ICE); const me = pc;
+  pc.ontrack = (ev) => { $('v').srcObject = ev.streams[0]; };
+  pc.onconnectionstatechange = () => {
+    if (me !== pc) return;
+    if (me.connectionState === 'connected') { tries = 0; setBadge('EN VIVO', true); }
+    else if (['failed', 'disconnected', 'closed'].includes(me.connectionState)) {
+      drop(); setBadge('Esperando transmisión');
+      if (tries++ < 5) setTimeout(hello, 3000);
+    }
+  };
+  await pc.setRemoteDescription({ type: 'offer', sdp: m.sdp });
+  await pc.setLocalDescription(await pc.createAnswer());
+  await gather(pc);
+  sig.send({ t: 'answer', v: vid, b: m.b, sdp: pc.localDescription.sdp }).catch(() => setBadge('Sin conexión'));
+}
+
+function start(c) {
+  code = c.trim().toLowerCase().replace(/[^a-z0-9]/g, ''); if (!code) return;
+  $('gate').hidden = true; setBadge('Conectando…');
+  sig = new Signal(code, (m) => {
+    if (m.t === 'live') { if (!pc) hello(); }
+    else if (m.t === 'bye') { drop(); pending = 0; setBadge('Esperando transmisión'); }
+    else if (m.t === 'offer' && m.v === vid) onOffer(m);
+  }, {
+    since: '9m',
+    onstatus: (st) => { if (st === 'error') setBadge('Reconectando…'); else if (!pc) setBadge('Esperando transmisión'); },
   });
 }
-function start(c) { code = c.trim().toLowerCase().replace(/[^a-z0-9]/g, ''); if (!code) return; $('gate').hidden = true; connect(); }
 $('go').onclick = () => start($('code').value);
 start(location.hash.slice(1) || window.DEFAULT_CODE);
 </script></body></html>
