@@ -92,16 +92,16 @@ start(location.hash.slice(1) || window.DEFAULT_CODE);
 // Botón de Chromecast: el Chromecast abre esta misma página en modo TV y se conecta solo.
 if (!isTV && 'PresentationRequest' in window) {
   try {
-    const req = new PresentationRequest([new URL('watch.html?tv=1#' + code, location.href).href]);
+    const req = new PresentationRequest([new URL('watch.html?tv=1', location.href).href]);
     const btn = $('cast');
     req.getAvailability().then((av) => {
       const upd = () => (btn.hidden = !av.value); upd(); av.onchange = upd;
-    }).catch(() => {});
+    }).catch((e) => console.warn('Chromecast:', e));
     const resume = () => { casting = false; btn.classList.remove('on'); pending = 0; hello(); };
     btn.onclick = () => req.start().then((conn) => {
       casting = true; btn.classList.add('on'); drop(); setBadge('Transmitiendo a la TV');
       conn.onterminate = conn.onclose = resume;
     }).catch(() => {});
-  } catch {}
+  } catch (e) { console.warn('Chromecast:', e); }
 }
 </script></body></html>
