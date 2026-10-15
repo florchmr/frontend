@@ -31,10 +31,23 @@ function stun() {
     setTimeout(() => { pc.close(); add(`${ok(types.has('srflx'))} STUN (Google): ${types.has('srflx') ? 'ok' : 'no responde (tu red bloquea WebRTC hacia Internet)'} [${[...types].join(', ') || 'sin candidatos'}]`); res(); }, 5000);
   });
 }
+function cast() {
+  return new Promise((res) => {
+    if (!('PresentationRequest' in window)) { add('❌ Chromecast: este navegador no tiene la API de presentación (¿Safari/Firefox?)'); return res(); }
+    try {
+      const req = new PresentationRequest([new URL('watch.html?tv=1', location.href).href]);
+      req.getAvailability().then((av) => {
+        let t = setTimeout(() => { add(`${ok(av.value)} Chromecast (API de presentación): ${av.value ? 'hay dispositivos disponibles' : 'no se detectó ninguno en 8 s'}`); res(); }, 8000);
+        av.onchange = () => { if (av.value) { clearTimeout(t); add('✅ Chromecast (API de presentación): hay dispositivos disponibles'); res(); } };
+        if (av.value) { clearTimeout(t); add('✅ Chromecast (API de presentación): hay dispositivos disponibles'); res(); }
+      }).catch((e) => { add('❌ Chromecast (API de presentación): ' + e.name + ' ' + e.message); res(); });
+    } catch (e) { add('❌ Chromecast: ' + e.message); res(); }
+  });
+}
 (async () => {
   add('Navegador: ' + navigator.userAgent);
   add('Pantalla compartida disponible: ' + (navigator.mediaDevices?.getDisplayMedia ? 'sí' : 'no'));
   try { add('Código guardado: ' + (localStorage.getItem('code') || '(ninguno)')); } catch { add('Código guardado: (localStorage bloqueado)'); }
-  await sse(); await stun(); add('Fin.');
+  await sse(); await stun(); await cast(); add('Fin.');
 })();
 </script></body></html>
