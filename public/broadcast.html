@@ -81,7 +81,7 @@ $('start').onclick = async () => {
       else if (stream) {
         $('badge').textContent = 'EN VIVO'; $('badge').classList.add('live');
         $('start').disabled = true; $('stop').disabled = false;
-        $('link').value = location.origin + location.pathname.replace('broadcast.html', '');
+        $('link').value = window.PUBLIC_URL || location.origin + '/';
         $('linkbox').hidden = false;
         const live = () => sig && sig.send({ t: 'live', b: bid }).catch(() => {});
         if (!hb) { live(); hb = setInterval(live, 4 * 60 * 1000); }
