@@ -17,6 +17,23 @@
 const $ = (id) => document.getElementById(id);
 const setBadge = (t, live) => { $('badge').textContent = t; $('badge').classList.toggle('live', !!live); };
 let sig, pc, code, pending = 0, tries = 0, vid = rid();
+const vEl = $('v'); let unmutedAt = 0, lastT = -1, stuck = 0;
+
+// Al sacar el silencio, algunos celulares pausan el video: lo reanudamos.
+vEl.addEventListener('volumechange', () => {
+  if (vEl.muted) return;
+  unmutedAt = Date.now();
+  setTimeout(() => vEl.paused && vEl.play().catch(() => { vEl.muted = true; }), 0);
+});
+vEl.addEventListener('pause', () => {
+  if (Date.now() - unmutedAt < 1500 && vEl.srcObject) vEl.play().catch(() => { vEl.muted = true; });
+});
+// Si el video queda congelado, volvemos a conectarlo al stream.
+setInterval(() => {
+  if (!vEl.srcObject || vEl.paused || document.hidden) { stuck = 0; lastT = -1; return; }
+  if (vEl.currentTime === lastT) { if (++stuck >= 3) { const st = vEl.srcObject; vEl.srcObject = null; vEl.srcObject = st; vEl.play().catch(() => { vEl.muted = true; vEl.play().catch(() => {}); }); stuck = 0; } }
+  else { stuck = 0; lastT = vEl.currentTime; }
+}, 2000);
 
 function hello() {
   if (Date.now() - pending < 12000) return;   // ya pedí hace poco
