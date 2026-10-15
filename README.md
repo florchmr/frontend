@@ -1,13 +1,8 @@
 # Retransmisión en vivo
 
-Una persona abre el portal del torneo (con su login), comparte esa pestaña y el resto del equipo la ve por WebRTC.
+Sitio estático (WebRTC + PeerJS). Una persona comparte la pestaña del partido en `/broadcast.html`
+y el equipo lo ve en `/watch.html#CODIGO`. Se publica tal cual en Vercel (`vercel.json` usa la carpeta `public`).
 
-```
-npm install
-BROADCAST_KEY=miclave WATCH_KEY=otraclave npm start   # WATCH_KEY es opcional
-```
-
-- Transmitir: `/broadcast.html` (Chrome/Edge de escritorio; marcar "Compartir audio de la pestaña")
-- Ver: `/watch.html`
-
-Notas: `getDisplayMedia` requiere HTTPS (o localhost) en producción. El video sale desde el navegador del transmisor hacia cada espectador (P2P), así que sirve para grupos chicos (~10-15). Para más gente o redes restrictivas hace falta un servidor TURN/SFU.
+- Transmitir: Chrome/Edge de escritorio; marcar "Compartir audio de la pestaña".
+- El código secreto actúa como clave: quien lo conoce puede ver.
+- El video va del navegador del transmisor a cada espectador (P2P), sirve para ~10-15 personas.

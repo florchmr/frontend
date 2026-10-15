@@ -1,68 +1,70 @@
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Transmitir</title><link rel="stylesheet" href="style.css"></head>
+<title>Transmitir</title><link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script></head>
 <body><main>
 <h1>Transmitir <span id="badge" class="badge">Sin transmitir</span></h1>
 <p class="sub">Espectadores conectados: <b id="n">0</b></p>
 <div class="card">
   <ol class="hint">
-    <li>Abrí el portal del torneo en <b>otra pestaña</b> y poné el partido a pantalla normal.</li>
-    <li>Escribí la clave y tocá <b>Compartir pestaña</b>.</li>
-    <li>Elegí la pestaña del portal y marcá <b>Compartir audio de la pestaña</b>.</li>
+    <li>Abrí el partido en <b>otra pestaña</b> de Chrome o Edge.</li>
+    <li>Elegí un código secreto (o dejá el sugerido) y tocá <b>Compartir pestaña</b>.</li>
+    <li>Elegí la pestaña del partido y marcá <b>Compartir audio de la pestaña</b>.</li>
+    <li>Mandales a tus compañeros el link que aparece abajo.</li>
   </ol>
   <div class="row">
-    <input id="key" type="password" placeholder="Clave de transmisión">
+    <input id="code" placeholder="Código secreto">
     <button id="start">Compartir pestaña</button>
     <button id="stop" class="sec" disabled>Detener</button>
   </div>
   <p id="msg" class="hint"></p>
+  <div id="linkbox" hidden>
+    <div class="row"><input id="link" readonly style="flex:1;min-width:240px"><button id="copy" class="sec">Copiar link</button></div>
+  </div>
 </div>
 <div class="card"><video id="v" autoplay muted playsinline></video></div>
 </main>
-<script src="rtc.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-let ws, stream; const peers = new Map();
 const msg = (t) => ($('msg').textContent = t);
+const rand = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('');
+try { $('code').value = localStorage.getItem('code') || rand(); } catch { $('code').value = rand(); }
+let peer, stream, calls = new Map();
 
 function stop() {
-  peers.forEach((p) => p.close()); peers.clear();
-  stream && stream.getTracks().forEach((t) => t.stop());
-  ws && ws.close(); stream = ws = null;
+  calls.forEach((c) => c.close()); calls.clear();
+  stream && stream.getTracks().forEach((t) => t.stop()); stream = null;
+  peer && peer.destroy(); peer = null;
   $('v').srcObject = null; $('badge').textContent = 'Sin transmitir'; $('badge').classList.remove('live');
   $('start').disabled = false; $('stop').disabled = true; $('n').textContent = 0;
 }
 $('stop').onclick = stop;
+$('copy').onclick = () => { navigator.clipboard.writeText($('link').value); $('copy').textContent = '¡Copiado!'; };
 
 $('start').onclick = async () => {
+  const code = $('code').value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (code.length < 5) return msg('El código debe tener al menos 5 letras o números.');
+  try { localStorage.setItem('code', code); } catch {}
   try {
-    stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true, preferCurrentTab: false });
-  } catch { return msg('No se compartió ninguna pantalla.'); }
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
+  } catch { return msg('No se compartió ninguna pestaña.'); }
   $('v').srcObject = stream;
   stream.getVideoTracks()[0].onended = stop;
-  if (!stream.getAudioTracks().length) msg('Ojo: no se está compartiendo audio. Volvé a empezar y marcá "Compartir audio".');
+  msg(stream.getAudioTracks().length ? '' : 'Ojo: no se comparte audio. Detené y volvé a empezar marcando "Compartir audio de la pestaña".');
 
-  ws = new WebSocket(wsUrl());
-  const send = (m) => ws.send(JSON.stringify(m));
-  ws.onopen = () => send({ type: 'join-broadcaster', key: $('key').value });
-  ws.onclose = () => stream && stop();
-  ws.onmessage = async (e) => {
-    const m = JSON.parse(e.data);
-    if (m.type === 'error') { msg(m.error); return stop(); }
-    if (m.type === 'ok') {
-      $('badge').textContent = 'EN VIVO'; $('badge').classList.add('live');
-      $('start').disabled = true; $('stop').disabled = false; if (!$('msg').textContent.startsWith('Ojo')) msg('');
-    } else if (m.type === 'viewers') $('n').textContent = m.n;
-    else if (m.type === 'viewer-joined') {
-      const pc = new RTCPeerConnection(ICE); peers.set(m.id, pc);
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-      pc.onicecandidate = (ev) => ev.candidate && send({ type: 'candidate', to: m.id, candidate: ev.candidate });
-      // Priorizar calidad de video estable
-      pc.getSenders().forEach((s) => { if (s.track?.kind === 'video') { const p = s.getParameters(); p.encodings = [{ maxBitrate: 3_000_000 }]; s.setParameters(p).catch(() => {}); } });
-      const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
-      send({ type: 'offer', to: m.id, sdp: pc.localDescription });
-    } else if (m.type === 'answer') await peers.get(m.from)?.setRemoteDescription(m.sdp);
-    else if (m.type === 'candidate') await peers.get(m.from)?.addIceCandidate(m.candidate).catch(() => {});
-    else if (m.type === 'viewer-left') { peers.get(m.id)?.close(); peers.delete(m.id); }
-  };
+  peer = new Peer('wftda-live-' + code);
+  peer.on('error', (e) => { msg(e.type === 'unavailable-id' ? 'Ese código ya está en uso. Probá otro.' : 'Error de conexión: ' + e.type); stop(); });
+  peer.on('open', () => {
+    $('badge').textContent = 'EN VIVO'; $('badge').classList.add('live');
+    $('start').disabled = true; $('stop').disabled = false;
+    $('link').value = location.origin + location.pathname.replace('broadcast.html', 'watch.html') + '#' + code;
+    $('linkbox').hidden = false;
+  });
+  peer.on('connection', (conn) => {
+    conn.on('open', () => {
+      const call = peer.call(conn.peer, stream);
+      calls.set(conn.peer, call); $('n').textContent = calls.size;
+    });
+    conn.on('close', () => { calls.get(conn.peer)?.close(); calls.delete(conn.peer); $('n').textContent = calls.size; });
+  });
 };
 </script></body></html>

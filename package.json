@@ -1,8 +1,6 @@
 {
   "name": "frontend",
   "version": "1.0.0",
-  "description": "Retransmisión en vivo (WebRTC) para el equipo",
-  "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "dependencies": { "ws": "^8.18.0" }
+  "private": true,
+  "description": "Retransmisión en vivo (WebRTC con PeerJS), sitio estático"
 }

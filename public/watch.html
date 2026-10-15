@@ -1,47 +1,47 @@
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ver partido</title><link rel="stylesheet" href="style.css"></head>
+<title>Ver partido</title><link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script></head>
 <body><main>
 <h1>Partido en vivo <span id="badge" class="badge">Conectando…</span></h1>
 <p class="sub" id="status">&nbsp;</p>
 <div class="card" id="gate" hidden>
-  <div class="row"><input id="key" type="password" placeholder="Clave para ver"><button id="go">Entrar</button></div>
+  <div class="row"><input id="code" placeholder="Código"><button id="go">Entrar</button></div>
 </div>
 <div class="card">
   <video id="v" autoplay playsinline controls muted></video>
   <div class="row"><button id="unmute" class="sec">Activar sonido</button><button id="fs" class="sec">Pantalla completa</button></div>
 </div>
 </main>
-<script src="rtc.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-let ws, pc;
 const setBadge = (t, live) => { $('badge').textContent = t; $('badge').classList.toggle('live', !!live); };
 $('unmute').onclick = () => { $('v').muted = false; };
 $('fs').onclick = () => $('v').requestFullscreen?.();
+let peer, timer, code;
 
-function connect(key) {
-  ws = new WebSocket(wsUrl());
-  const send = (m) => ws.send(JSON.stringify(m));
-  const request = () => { setBadge('Conectando…'); send({ type: 'want-stream' }); };
-  ws.onopen = () => send({ type: 'join-viewer', key });
-  ws.onclose = () => { setBadge('Desconectado'); setTimeout(() => connect(key), 3000); };
-  ws.onmessage = async (e) => {
-    const m = JSON.parse(e.data);
-    if (m.type === 'error') { $('status').textContent = m.error; $('gate').hidden = false; ws.onclose = null; ws.close(); }
-    else if (m.type === 'ok') { $('gate').hidden = true; $('status').innerHTML = '&nbsp;'; m.live ? request() : setBadge('Esperando transmisión'); }
-    else if (m.type === 'live') request();
-    else if (m.type === 'offline') { pc?.close(); pc = null; $('v').srcObject = null; setBadge('Esperando transmisión'); }
-    else if (m.type === 'offer') {
-      pc?.close(); pc = new RTCPeerConnection(ICE);
-      pc.ontrack = (ev) => { $('v').srcObject = ev.streams[0]; };
-      pc.onicecandidate = (ev) => ev.candidate && send({ type: 'candidate', candidate: ev.candidate });
-      pc.onconnectionstatechange = () => { if (pc?.connectionState === 'connected') setBadge('EN VIVO', true); };
-      await pc.setRemoteDescription(m.sdp);
-      const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
-      send({ type: 'answer', sdp: pc.localDescription });
-    } else if (m.type === 'candidate') await pc?.addIceCandidate(m.candidate).catch(() => {});
-  };
+function connect() {
+  clearTimeout(timer);
+  peer && peer.destroy();
+  setBadge('Conectando…');
+  peer = new Peer();
+  const retry = () => { setBadge('Esperando transmisión'); timer = setTimeout(connect, 4000); };
+  peer.on('error', retry);
+  peer.on('disconnected', retry);
+  peer.on('call', (call) => {
+    call.answer();
+    call.on('stream', (s) => { $('v').srcObject = s; setBadge('EN VIVO', true); });
+    call.on('close', retry);
+  });
+  peer.on('open', () => {
+    const conn = peer.connect('wftda-live-' + code);
+    conn.on('close', retry);
+    conn.on('error', retry);
+    // Si el transmisor no está, no hay respuesta: reintentar
+    timer = setTimeout(() => { if (!$('v').srcObject) retry(); }, 8000);
+  });
 }
-$('go').onclick = () => connect($('key').value);
-fetch('/config').then((r) => r.json()).then((c) => (c.watchKeyRequired ? ($('gate').hidden = false, setBadge('Clave requerida')) : connect('')));
+function start(c) { code = c.trim().toLowerCase().replace(/[^a-z0-9]/g, ''); if (!code) return; $('gate').hidden = true; connect(); }
+$('go').onclick = () => start($('code').value);
+const fromHash = location.hash.slice(1);
+fromHash ? start(fromHash) : ($('gate').hidden = false, setBadge('Falta el código'));
 </script></body></html>
