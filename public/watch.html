@@ -1,5 +1,6 @@
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Ver partido</title><link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script></head>
 <body><main>
 <h1>Partido en vivo <span id="badge" class="badge">Conectando…</span></h1>
@@ -42,6 +43,5 @@ function connect() {
 }
 function start(c) { code = c.trim().toLowerCase().replace(/[^a-z0-9]/g, ''); if (!code) return; $('gate').hidden = true; connect(); }
 $('go').onclick = () => start($('code').value);
-const fromHash = location.hash.slice(1);
-fromHash ? start(fromHash) : ($('gate').hidden = false, setBadge('Falta el código'));
+start(location.hash.slice(1) || window.DEFAULT_CODE);
 </script></body></html>

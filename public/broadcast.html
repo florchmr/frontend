@@ -1,5 +1,6 @@
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Transmitir</title><link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script></head>
 <body><main>
 <h1>Transmitir <span id="badge" class="badge">Sin transmitir</span></h1>
@@ -7,9 +8,9 @@
 <div class="card">
   <ol class="hint">
     <li>Abrí el partido en <b>otra pestaña</b> de Chrome o Edge.</li>
-    <li>Elegí un código secreto (o dejá el sugerido) y tocá <b>Compartir pestaña</b>.</li>
+    <li>Dejá el código que aparece y tocá <b>Compartir pestaña</b>.</li>
     <li>Elegí la pestaña del partido y marcá <b>Compartir audio de la pestaña</b>.</li>
-    <li>Mandales a tus compañeros el link que aparece abajo.</li>
+    <li>Tus compañeros solo tienen que abrir el link principal de la página.</li>
   </ol>
   <div class="row">
     <input id="code" placeholder="Código secreto">
@@ -27,7 +28,7 @@
 const $ = (id) => document.getElementById(id);
 const msg = (t) => ($('msg').textContent = t);
 const rand = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('');
-try { $('code').value = localStorage.getItem('code') || rand(); } catch { $('code').value = rand(); }
+try { $('code').value = localStorage.getItem('code') || window.DEFAULT_CODE; } catch { $('code').value = window.DEFAULT_CODE; }
 let peer, stream, calls = new Map();
 
 function stop() {

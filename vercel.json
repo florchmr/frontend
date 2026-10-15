@@ -1,1 +1,1 @@
-{ "outputDirectory": "public" }
+{ "outputDirectory": "public", "rewrites": [{ "source": "/", "destination": "/watch.html" }] }
