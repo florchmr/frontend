@@ -38,10 +38,13 @@ function stop() {
   clearInterval(hb); hb = null;
   sig && sig.send({ t: 'bye', b: bid }).catch(() => {}); setTimeout(() => sig && sig.close(), 500);
   pcs.forEach((p) => p.close()); pcs.clear();
-  stream && stream.getTracks().forEach((t) => t.stop()); stream = sig = null;
+  stream && stream.getTracks().forEach((t) => t.stop()); wake && wake.release().catch(() => {}); wake = null; stream = sig = null;
   $('v').srcObject = null; $('badge').textContent = 'Sin transmitir'; $('badge').classList.remove('live');
   $('start').disabled = false; $('stop').disabled = true; $('n').textContent = 0;
 }
+let wake = null;
+async function keepAwake() { try { wake = await navigator.wakeLock?.request('screen'); } catch {} }
+document.addEventListener('visibilitychange', () => { if (stream && document.visibilityState === 'visible') keepAwake(); });
 $('stop').onclick = stop;
 $('copy').onclick = () => { navigator.clipboard.writeText($('link').value); $('copy').textContent = '¡Copiado!'; };
 
@@ -68,7 +71,7 @@ $('start').onclick = async () => {
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
   } catch { return msg('No se compartió ninguna pestaña.'); }
-  $('v').srcObject = stream;
+  $('v').srcObject = stream; keepAwake();
   stream.getVideoTracks()[0].onended = stop;
   msg(stream.getAudioTracks().length ? '' : 'Ojo: no se comparte audio. Detené y volvé a empezar marcando "Compartir audio de la pestaña".');
 
